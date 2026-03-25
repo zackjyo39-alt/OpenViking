@@ -1,6 +1,6 @@
 # OpenViking + 本地 Ollama + 编辑器（OpenCode / Cursor）指南
 
-本文汇总：**本地 Ollama 跑 OpenViking**、**健康检查**、**OpenCode 记忆插件**、**数据与备份**、以及**如何让编辑器尽量依赖 OpenViking**。便于随仓库推送与团队同步。
+本文汇总：**本地 Ollama 跑 OpenViking**、**健康检查**、**OpenCode 记忆插件**、**如何验证插件是否在跑**、**数据与备份**、以及**如何让编辑器尽量依赖 OpenViking**。便于随仓库推送与团队同步。
 
 ---
 
@@ -8,7 +8,7 @@
 
 - **OpenViking** 是独立的 **HTTP 服务**（默认常见端口 `1933`），持久化上下文、向量检索、会话等。
 - **OpenCode** 通过官方示例插件 [`examples/opencode-memory-plugin`](../../../examples/opencode-memory-plugin/) 把 OpenViking 暴露为工具（`memsearch` / `memread` / `membrowse` / `memcommit`）。
-- **Cursor** 没有内置「只认 OpenViking」的开关；要靠 **Rules、MCP、自建工作流** 等间接约束（见下文 §7）。
+- **Cursor** 没有内置「只认 OpenViking」的开关；要靠 **Rules、MCP、自建工作流** 等间接约束（见下文 §8）。
 
 上下文「记在谁那儿」：**记在 OpenViking 配置的 `storage.workspace` 目录里**，不是记在 OpenViking 源码仓库里。
 
@@ -75,9 +75,79 @@ curl -sS http://127.0.0.1:1933/ready
 
 插件会在同目录写入 `openviking-memory.log`、`openviking-session-map.json` 等运行时文件，勿提交到 Git。
 
+**本机推荐组合（可选）：**
+
+- 在 `~/.config/opencode/opencode.json` 顶层增加 **`instructions`**，指向一份说明文件（例如 `~/.config/opencode/instructions/openviking-memory.md`），引导 Agent 在涉及偏好/历史/项目事实时优先调用 `memsearch` / `memread` 等。详见 OpenCode 官方配置 schema 中的 `instructions` 字段。
+
 ---
 
-## 5. 为什么 `viking://resources/` 是空的？
+## 5. 如何确认 OpenCode「在用」插件管理上下文？
+
+先分清两件事：**插件后台自动做的事**，与 **模型是否每轮都调用 `memsearch`**，不是同一回事。
+
+### 5.1 插件会自动做什么（不依赖模型点工具）
+
+OpenCode 加载 `openviking-memory.ts` 且 `openviking-config.json` 里 **`enabled: true`** 时，插件会：
+
+| 行为 | 说明 |
+|------|------|
+| 初始化 | 读取配置、写日志 |
+| 健康检查 | 请求 OpenViking 的 `/health` |
+| **自动 commit 调度** | `autoCommit.enabled: true` 时，约每分钟检查一次，按 `intervalMinutes`（如 10）对会话触发向 OpenViking 的提交逻辑 |
+| **会话绑定** | 在 `session.created` 等事件里为 OpenCode 会话创建/对齐 OpenViking session，并维护 `openviking-session-map.json` |
+| **消息同步** | 通过事件钩子把对话消息写入 OpenViking 会话（具体见插件源码中的 `event` 处理） |
+
+以上**不要求**模型调用 `memsearch`，属于**同步对话 + 定时提交**管线。
+
+### 5.2 什么不会「每轮自动」发生
+
+**`memsearch` / `memread` / `membrowse`** 是 Agent **工具（tool）**，是否调用由**模型决定**。`instructions` 只能提高概率，**不是**内核级「每轮强制检索」开关。
+
+- 若关心「对话有没有进 OpenViking」→ 看 **§5.3** 的日志与映射文件、以及服务端 session。
+- 若关心「回答前有没有先查记忆」→ 看模型是否调用了 `mem*` 工具，并继续用 **§8** 的规则与 instructions 约束。
+
+### 5.3 自检清单（推荐按顺序做）
+
+1. **看插件日志**
+
+   ```bash
+   tail -f ~/.config/opencode/plugins/openviking-memory.log
+   ```
+
+   重启 OpenCode、新开会话后，应能看到（具体文案以日志为准）：
+
+   - `OpenViking Memory Plugin initialized`（含 `endpoint`）
+   - `OpenViking health check passed`（服务未启动则为 failed）
+   - `Auto-commit scheduler started`
+   - 新建会话时出现 `OpenCode session created` 等与 OpenViking session 相关的成功日志  
+
+   若启动即出现 **`OpenViking Memory Plugin is disabled`**，检查配置里 `enabled` 是否为 `false` 或配置文件路径是否错误。
+
+2. **看会话映射是否在更新**
+
+   ```bash
+   cat ~/.config/opencode/plugins/openviking-session-map.json
+   ```
+
+   在 OpenCode 中多轮对话后再次查看；有新增或更新说明插件在处理会话。
+
+3. **看 OpenViking 侧**  
+   查看服务端日志是否有对应 session / message / task 请求；若安装了 `ov` CLI，可用官方命令或 HTTP API 核对 session。
+
+4. **看 OpenCode 工具列表**  
+   Agent 可用工具中应出现 **memsearch、memread、membrowse、memcommit**。若完全没有，多为插件未被加载（路径须为 `~/.config/opencode/plugins/` 下**一级**的 `*.ts` / `*.js`）。
+
+5. **OpenCode 调试**  
+   若支持在 `opencode.json` 中设置 **`logLevel`: `DEBUG`**（以当前版本文档为准），可进一步确认插件加载与报错信息。
+
+### 5.4 小结
+
+- **「插件在自动管上下文」** ≈ 日志里有初始化/健康检查/auto-commit、映射文件在动、服务端有流量。  
+- **「每答必先 memsearch」** 目前只能靠 **instructions + 模型自觉**；若要更强约束，依赖 OpenCode 后续能力或自建工作流。
+
+---
+
+## 6. 为什么 `viking://resources/` 是空的？
 
 `viking://` 是 **虚拟文件系统命名空间**。**新装、尚未导入资源**时，`viking://resources/` **为空是正常现象**。
 
@@ -85,7 +155,7 @@ curl -sS http://127.0.0.1:1933/ready
 
 ---
 
-## 6. 数据在哪？丢了什么会丢「上下文历史」？
+## 7. 数据在哪？丢了什么会丢「上下文历史」？
 
 | 丢失内容 | OpenViking 里的上下文 / 记忆 |
 |----------|------------------------------|
@@ -101,11 +171,11 @@ curl -sS http://127.0.0.1:1933/ready
 
 ---
 
-## 7. 如何「尽量强制」编辑器使用 OpenViking？
+## 8. 如何「尽量强制」编辑器使用 OpenViking？
 
 先说结论：**没有通用的、编辑器级别的硬开关**能 100% 禁止模型「不用工具、只靠自身上下文」。能做的是 **配置 + 流程 + 提示词约束**。
 
-### 7.1 OpenCode
+### 8.1 OpenCode
 
 - **插件层**：在 `openviking-config.json` 中设置 `"enabled": true`，并保证 `endpoint` 指向正确实例；服务端可用时插件会注册 `memsearch` 等工具。
 - **行为层**：在 **Agent / 项目系统提示** 中写明规则，例如：
@@ -114,7 +184,7 @@ curl -sS http://127.0.0.1:1933/ready
   - 长对话后定期或话题结束时调用 `memcommit`。
 - 若 OpenCode 后续提供「必选工具」或「策略模板」类能力，可再收紧；以你所用版本的官方文档为准。
 
-### 7.2 Cursor
+### 8.2 Cursor
 
 - Cursor **没有**与 OpenViking 的官方一键绑定。
 - 可行方向（择一或组合）：
@@ -122,13 +192,13 @@ curl -sS http://127.0.0.1:1933/ready
   - **MCP**：若你或社区提供「OpenViking MCP」封装 HTTP API，可在 Cursor 里挂载 MCP，把记忆操作变成工具调用，再配合 Rules 强调优先使用。
   - **统一入口**：团队规定「长期记忆只写入 OpenViking」，Cursor 侧只做编辑，记忆统一在 OpenCode + OpenViking 流水线维护。
 
-### 7.3 安全与线上
+### 8.3 安全与线上
 
 对外暴露 OpenViking 时，务必配置 **`server.root_api_key`**（及文档要求的鉴权方式），避免未授权访问 workspace。
 
 ---
 
-## 8. 相关链接（仓库内）
+## 9. 相关链接（仓库内）
 
 | 主题 | 路径 |
 |------|------|
