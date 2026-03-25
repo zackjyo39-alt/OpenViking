@@ -1,0 +1,30 @@
+{
+  "storage": {
+    "workspace": "${OPENVIKING_WORKSPACE}",
+    "vectordb": {
+      "backend": "local",
+      "dimension": ${EMBEDDING_DIMENSION}
+    }
+  },
+  "log": {
+    "level": "${OPENVIKING_LOG_LEVEL}",
+    "output": "stdout"
+  },
+  "default_search_mode": "fast",
+  "embedding": {
+    "dense": {
+      "provider": "ollama",
+      "model": "${OLLAMA_EMBED_MODEL}",
+      "api_base": "${OLLAMA_API_BASE}",
+      "dimension": ${EMBEDDING_DIMENSION}
+    },
+    "max_concurrent": ${OPENVIKING_EMBED_MAX_CONCURRENT}
+  },
+  "vlm": {
+    "provider": "openai",
+    "model": "${OLLAMA_CHAT_MODEL}",
+    "api_base": "${OLLAMA_API_BASE}",
+    "api_key": "${OPENVIKING_VLM_API_KEY}",
+    "max_concurrent": ${OPENVIKING_VLM_MAX_CONCURRENT}
+  }
+}

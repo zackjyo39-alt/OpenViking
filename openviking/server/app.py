@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from openviking.server.api_keys import APIKeyManager
 from openviking.server.config import ServerConfig, load_server_config, validate_server_config
@@ -136,6 +136,23 @@ def create_app(
     )
 
     app.state.config = config
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Browser-friendly entry: API has no HTML homepage at /."""
+        return {
+            "service": "OpenViking",
+            "message": "HTTP API is running; open /docs for interactive API.",
+            "health": "/health",
+            "ready": "/ready",
+            "openapi": "/openapi.json",
+            "docs": "/docs",
+        }
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        """Avoid 404 noise when browsers request a site icon."""
+        return Response(status_code=204)
 
     # Add CORS middleware
     app.add_middleware(

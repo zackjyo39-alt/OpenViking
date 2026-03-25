@@ -164,3 +164,6 @@ examples/data/
 openviking/_version.py
 specs/
 .trae/
+
+# Local overrides for deploy/start-openviking-ollama.sh
+deploy/.env
