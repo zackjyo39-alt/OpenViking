@@ -184,13 +184,27 @@ OpenCode 加载 `openviking-memory.ts` 且 `openviking-config.json` 里 **`enabl
   - 长对话后定期或话题结束时调用 `memcommit`。
 - 若 OpenCode 后续提供「必选工具」或「策略模板」类能力，可再收紧；以你所用版本的官方文档为准。
 
-### 8.2 Cursor
+### 8.2 Cursor（推荐：官方 MCP + 项目 Rules）
 
-- Cursor **没有**与 OpenViking 的官方一键绑定。
-- 可行方向（择一或组合）：
-  - **User / Project Rules**：写明「涉及跨会话记忆时，应通过团队约定的接口访问 OpenViking（例如文档化 API、内部脚本）」；模型仍可能不遵守，需人工抽查。
-  - **MCP**：若你或社区提供「OpenViking MCP」封装 HTTP API，可在 Cursor 里挂载 MCP，把记忆操作变成工具调用，再配合 Rules 强调优先使用。
-  - **统一入口**：团队规定「长期记忆只写入 OpenViking」，Cursor 侧只做编辑，记忆统一在 OpenCode + OpenViking 流水线维护。
+Cursor **没有**内置 OpenViking 按钮，推荐组合：
+
+1. **OpenViking 主服务**（`openviking-server`，常见端口 **1933**）照常运行，负责存储与索引。
+2. **OpenViking MCP 服务**（官方示例 `examples/mcp-query`，默认 **HTTP `http://127.0.0.1:2033/mcp`**），把 **`search` / `query` / `add_resource`** 暴露给 Cursor。  
+   本仓库提供免源码构建的启动脚本（使用 PyPI 的 `openviking` wheel）：
+   - [`deploy/start-openviking-mcp-for-cursor.sh`](../../../deploy/start-openviking-mcp-for-cursor.sh)  
+   - 默认读取与 `start-openviking-ollama.sh` 一致的 **`OV_CONFIG`**（如 `~/.cache/openviking-ollama/ov.generated.json`）与 **`OV_DATA`**（workspace 目录）。首次需已生成配置且目录存在。
+3. **Cursor MCP 配置**：在 `~/.cursor/mcp.json` 的 `mcpServers` 中增加：
+   ```json
+   "openviking": {
+     "url": "http://127.0.0.1:2033/mcp"
+   }
+   ```
+   保存后重启 Cursor，在 MCP 面板中启用 **openviking**。
+4. **项目 Rules**：在仓库 `.cursor/rules/` 下增加说明，引导在「跨会话记忆 / 已入库文档」场景优先调用 **openviking** 的 MCP 工具（与 OpenCode 的 `memsearch` 互为补充；**同一 `OV_DATA` workspace** 则数据一致）。
+
+官方 MCP 能力说明见上游文档：[Model Context Protocol (MCP)](https://volcengine-openviking.mintlify.app/integrations/mcp) 与 `examples/mcp-query/README.md`。
+
+**注意**：MCP 进程与 `openviking-server` 是**两个进程**；开发时通常两个终端分别启动，或使用进程管理器。
 
 ### 8.3 安全与线上
 
