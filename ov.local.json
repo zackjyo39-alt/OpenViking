@@ -25,12 +25,5 @@
       "dimension": 768
     },
     "max_concurrent": 10
-  },
-  "vlm": {
-    "provider": "openai",
-    "model": "qwen3.5:4b",
-    "api_base": "http://127.0.0.1:11434/v1",
-    "api_key": "ollama",
-    "max_concurrent": 20
   }
 }

@@ -180,3 +180,25 @@ def test_openviking_config_singleton_preserves_value_error_for_bad_config(tmp_pa
     with pytest.raises(ValueError, match="server"):
         OpenVikingConfigSingleton.initialize(config_path=str(config_path))
     OpenVikingConfigSingleton.reset_instance()
+
+
+def test_openviking_config_can_load_without_vlm_section(monkeypatch):
+    monkeypatch.setenv("OPENVIKING_CONFIG_FILE", "/tmp/codex-no-config.json")
+
+    from openviking_cli.utils.config.open_viking_config import OpenVikingConfig, OpenVikingConfigSingleton
+
+    config = OpenVikingConfig.from_dict(
+        {
+            "embedding": {
+                "dense": {
+                    "provider": "ollama",
+                    "model": "nomic-embed-text",
+                    "dimension": 768,
+                }
+            }
+        }
+    )
+
+    assert config.vlm.is_available() is False
+
+    OpenVikingConfigSingleton.reset_instance()
