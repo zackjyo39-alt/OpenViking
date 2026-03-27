@@ -6,6 +6,7 @@ Provides MCP tools for:
   - query: Full RAG pipeline (search + LLM generation)
   - search: Semantic search only (no LLM)
   - add_resource: Add documents/URLs to the database
+  - ensure_session / sync_progress / commit_session: Persist task progress into sessions
 
 Usage:
   uv run server.py
@@ -24,6 +25,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common.recipe import Recipe
+from common.session_progress import SessionProgressManager
 from mcp.server.fastmcp import FastMCP
 
 import openviking as ov
@@ -50,6 +52,16 @@ def _get_recipe() -> Recipe:
     return _recipe
 
 
+def _get_session_manager() -> SessionProgressManager:
+    """Get a helper for logging structured progress into OpenViking sessions."""
+    return SessionProgressManager(_get_recipe().client)
+
+
+def _json(data: object) -> str:
+    """Render tool results as deterministic JSON text."""
+    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
 def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
     """Create and configure the MCP server."""
     mcp = FastMCP(
@@ -57,7 +69,9 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
         instructions=(
             "OpenViking MCP Server provides RAG (Retrieval-Augmented Generation) capabilities. "
             "Use 'query' for full RAG answers, 'search' for semantic search only, "
-            "and 'add_resource' to ingest new documents."
+            "'add_resource' to ingest new documents, and the session tools to persist "
+            "structured task progress after meaningful conversation turns. Prefer "
+            "'sync_progress' over dumping raw transcripts."
         ),
         host=host,
         port=port,
@@ -215,6 +229,181 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
                 client.close()
 
         return await asyncio.to_thread(_add_sync)
+
+    @mcp.tool()
+    async def ensure_session(session_id: str = "") -> str:
+        """
+        Create a new session, or get/create the named session if session_id is provided.
+
+        Use one stable session_id per task so each conversation turn lands in the same
+        OpenViking session history.
+        """
+
+        def _ensure_sync():
+            manager = _get_session_manager()
+            return manager.ensure_session(session_id or None)
+
+        return _json(await asyncio.to_thread(_ensure_sync))
+
+    @mcp.tool()
+    async def get_session(session_id: str) -> str:
+        """
+        Get session metadata for an existing session.
+
+        Useful for inspecting commit count, pending tokens, and prior extraction state.
+        """
+
+        def _get_sync():
+            manager = _get_session_manager()
+            return manager.get_session(session_id)
+
+        return _json(await asyncio.to_thread(_get_sync))
+
+    @mcp.tool()
+    async def add_session_message(session_id: str, role: str, content: str) -> str:
+        """
+        Append one plain-text user or assistant message to a session.
+
+        Prefer 'sync_progress' for normal post-turn updates. Use this tool when you need
+        low-level control over the exact message sequence.
+        """
+
+        def _add_message_sync():
+            manager = _get_session_manager()
+            return manager.add_message(session_id=session_id, role=role, content=content)
+
+        return _json(await asyncio.to_thread(_add_message_sync))
+
+    @mcp.tool()
+    async def record_session_usage(
+        session_id: str,
+        contexts: Optional[list[str]] = None,
+        skill_uri: str = "",
+        skill_input: str = "",
+        skill_output: str = "",
+        skill_success: bool = True,
+    ) -> str:
+        """
+        Record which contexts or skills were actually used in a session.
+
+        This improves the quality of post-commit active_count updates and provenance.
+        """
+
+        def _record_usage_sync():
+            manager = _get_session_manager()
+            skill = None
+            if skill_uri.strip():
+                skill = {
+                    "uri": skill_uri.strip(),
+                    "input": skill_input.strip(),
+                    "output": skill_output.strip(),
+                    "success": skill_success,
+                }
+            return manager.record_usage(
+                session_id=session_id,
+                contexts=contexts or [],
+                skill=skill,
+            )
+
+        return _json(await asyncio.to_thread(_record_usage_sync))
+
+    @mcp.tool()
+    async def commit_session(
+        session_id: str,
+        wait: bool = False,
+        timeout_sec: float = 60.0,
+        poll_interval_sec: float = 1.0,
+    ) -> str:
+        """
+        Commit a session so OpenViking archives messages and extracts memories.
+
+        Use wait=false during interactive chats to avoid blocking on background memory
+        extraction. Use wait=true in automation or validation flows.
+        """
+
+        def _commit_sync():
+            manager = _get_session_manager()
+            return manager.commit_session(
+                session_id=session_id,
+                wait=wait,
+                timeout_sec=timeout_sec,
+                poll_interval_sec=poll_interval_sec,
+            )
+
+        return _json(await asyncio.to_thread(_commit_sync))
+
+    @mcp.tool()
+    async def get_task(task_id: str) -> str:
+        """
+        Get the current state of a background task returned by commit_session.
+        """
+
+        def _get_task_sync():
+            manager = _get_session_manager()
+            return manager.get_task(task_id)
+
+        return _json(await asyncio.to_thread(_get_task_sync))
+
+    @mcp.tool()
+    async def sync_progress(
+        session_id: str = "",
+        objective: str = "",
+        user_message: str = "",
+        assistant_summary: str = "",
+        completed: Optional[list[str]] = None,
+        changed_files: Optional[list[str]] = None,
+        decisions: Optional[list[str]] = None,
+        next_steps: Optional[list[str]] = None,
+        status: str = "in_progress",
+        contexts_used: Optional[list[str]] = None,
+        skill_uri: str = "",
+        skill_input: str = "",
+        skill_output: str = "",
+        skill_success: bool = True,
+        auto_commit: bool = True,
+        wait_for_commit: bool = False,
+        commit_timeout_sec: float = 60.0,
+        poll_interval_sec: float = 1.0,
+    ) -> str:
+        """
+        Persist one structured progress update after a meaningful conversation turn.
+
+        Best practice:
+        - keep a stable session_id per task
+        - store net-new progress, not the raw transcript
+        - include changed files, decisions, and next steps
+        - auto_commit=true for normal use, wait_for_commit=false for interactive latency
+        """
+
+        def _sync_progress_sync():
+            manager = _get_session_manager()
+            skill = None
+            if skill_uri.strip():
+                skill = {
+                    "uri": skill_uri.strip(),
+                    "input": skill_input.strip(),
+                    "output": skill_output.strip(),
+                    "success": skill_success,
+                }
+            return manager.sync_progress(
+                session_id=session_id or None,
+                objective=objective,
+                user_message=user_message,
+                assistant_summary=assistant_summary,
+                completed=completed or [],
+                changed_files=changed_files or [],
+                decisions=decisions or [],
+                next_steps=next_steps or [],
+                status=status,
+                contexts_used=contexts_used or [],
+                skill=skill,
+                auto_commit=auto_commit,
+                wait_for_commit=wait_for_commit,
+                commit_timeout_sec=commit_timeout_sec,
+                poll_interval_sec=poll_interval_sec,
+            )
+
+        return _json(await asyncio.to_thread(_sync_progress_sync))
 
     @mcp.resource("openviking://status")
     def server_status() -> str:
