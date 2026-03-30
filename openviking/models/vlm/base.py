@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0
 """VLM base interface and abstract classes"""
 
 import re
@@ -276,14 +276,10 @@ class VLMFactory:
 
             return OpenAIVLM(config)
 
-        if provider == "litellm":
-            raise ValueError(
-                "VLM provider 'litellm' has been temporarily disabled for security reasons"
-            )
+        else:
+            from .backends.litellm_vlm import LiteLLMVLMProvider
 
-        raise ValueError(
-            f"Unsupported VLM provider: '{provider}'. Supported providers: volcengine, openai, azure"
-        )
+            return LiteLLMVLMProvider(config)
 
     @staticmethod
     def get_available_providers() -> List[str]:

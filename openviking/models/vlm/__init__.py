@@ -1,7 +1,8 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0
 """VLM (Vision-Language Model) module"""
 
+from .backends.litellm_vlm import LiteLLMVLMProvider
 from .backends.openai_vlm import OpenAIVLM
 from .backends.volcengine_vlm import VolcEngineVLM
 from .base import VLMBase, VLMFactory
@@ -12,6 +13,7 @@ __all__ = [
     "VLMFactory",
     "OpenAIVLM",
     "VolcEngineVLM",
+    "LiteLLMVLMProvider",
     "get_all_provider_names",
     "is_valid_provider",
 ]
