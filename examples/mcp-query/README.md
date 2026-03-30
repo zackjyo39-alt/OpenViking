@@ -34,6 +34,28 @@ uv run server.py
 
 The server will be available at `http://127.0.0.1:2033/mcp`.
 
+## Recommended Workflow For Cursor, Codex, And Paperclip
+
+For task-driven coding agents, OpenViking should not be a passive optional tool. The host
+prompt or workflow must explicitly call it.
+
+Required contract:
+
+1. At task start, call `ensure_session("<stable-task-id>")`.
+2. Before answering codebase or implementation questions, call `search` or `query` and narrow
+   the URI scope as soon as you identify the relevant repo subtree.
+3. After each meaningful turn, call `sync_progress(...)` with net-new progress only.
+4. Keep `auto_commit=true` and `wait_for_commit=false` for normal interactive work.
+5. Use `commit_session(wait=true)` only in end-of-task, automation, or validation flows.
+
+Important:
+
+- A Paperclip task publication event does not automatically trigger OpenViking.
+- Polling `GET /api/v1/tasks` only checks OpenViking background task status. It is not a task
+  dispatch or agent wake-up mechanism.
+- For multi-session hosts such as Cursor/Codex, use the HTTP MCP endpoint. Do not spawn
+  per-session stdio OpenViking processes against the same data directory.
+
 ## Best-Practice Progress Sync
 
 If you want Cursor, Codex, or another MCP-capable agent to update OpenViking after
@@ -59,6 +81,7 @@ Recommended pattern:
 Design rules:
 
 - Reuse the same session for the same task.
+- Retrieve relevant context before coding or answering whenever OpenViking may contain it.
 - Log net-new progress, not full chat history.
 - Always include changed files and next steps when they exist.
 - Record actual contexts/skills used so `active_count` and provenance stay meaningful.

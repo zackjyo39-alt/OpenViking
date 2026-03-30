@@ -34,6 +34,26 @@ from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("openviking-mcp")
 
+BEST_PRACTICES = """
+OpenViking task workflow for coding agents:
+
+1. Retrieve first. Before answering implementation or codebase questions, search OpenViking
+   for relevant repo context and narrow the URI scope as soon as possible.
+2. Use one stable session per task. Call ensure_session once at task start and reuse the same
+   session_id for the entire task.
+3. Write back structured progress, not raw transcript. After each meaningful turn, call
+   sync_progress with the objective, assistant summary, changed files, decisions, and next steps.
+4. Keep interactive commits non-blocking. Use auto_commit=true and wait_for_commit=false during
+   chat. Reserve blocking commit_session(wait=true) for automation, validation, or end-of-task flows.
+5. Record provenance. When a reply depends on retrieved context or a skill/tool, record the actual
+   contexts_used and skill metadata so the session history remains auditable.
+6. Prefer HTTP MCP transport for multi-session hosts such as Cursor, Codex, and task runners.
+   Do not rely on stdio for concurrent sessions that share one OpenViking data directory.
+7. Paperclip-style task runners should explicitly invoke OpenViking. Publishing a task alone does
+   not trigger retrieval or session sync unless the host prompt or workflow calls these tools.
+   Publishing a task alone does not trigger retrieval.
+""".strip()
+
 # Global state
 _recipe: Optional[Recipe] = None
 _config_path: str = "./ov.conf"
@@ -71,7 +91,11 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
             "Use 'query' for full RAG answers, 'search' for semantic search only, "
             "'add_resource' to ingest new documents, and the session tools to persist "
             "structured task progress after meaningful conversation turns. Prefer "
-            "'sync_progress' over dumping raw transcripts."
+            "'sync_progress' over dumping raw transcripts. Follow this workflow by default: "
+            "retrieve first, keep one stable session per task with 'ensure_session', "
+            "write back meaningful progress with 'sync_progress', keep interactive commits "
+            "non-blocking with wait_for_commit=false, and use HTTP MCP transport for "
+            "multi-session hosts such as Cursor, Codex, and Paperclip task runners."
         ),
         host=host,
         port=port,
@@ -414,6 +438,11 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
             "status": "running",
         }
         return json.dumps(info, indent=2)
+
+    @mcp.resource("openviking://best-practices/task-workflow")
+    def task_workflow_best_practices() -> str:
+        """Get the recommended retrieve-first and session-sync workflow for coding agents."""
+        return BEST_PRACTICES
 
     return mcp
 

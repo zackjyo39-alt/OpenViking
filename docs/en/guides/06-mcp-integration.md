@@ -120,6 +120,23 @@ In Cursor Settings → MCP:
 }
 ```
 
+### Codex
+
+Configure Codex to use the same HTTP MCP endpoint pattern as other MCP hosts:
+
+```json
+{
+  "mcpServers": {
+    "openviking": {
+      "url": "http://localhost:2033/mcp"
+    }
+  }
+}
+```
+
+For multi-session coding workflows, prefer the dedicated `examples/mcp-query/server.py`
+HTTP server and keep one stable OpenViking `session_id` per external task.
+
 **stdio mode:**
 
 ```json
@@ -180,14 +197,41 @@ Once connected, OpenViking exposes the following MCP tools:
 
 | Tool | Description |
 |------|-------------|
-| `search` | Semantic search across memories and resources |
-| `add_memory` | Store a new memory |
-| `add_resource` | Add a resource (file, text, URL) |
-| `get_status` | Check system health and component status |
-| `list_memories` | Browse stored memories |
-| `list_resources` | Browse stored resources |
+| `query` | Full RAG pipeline: search plus answer generation |
+| `search` | Semantic search only |
+| `add_resource` | Add a file, directory, or URL for indexing |
+| `ensure_session` | Create or materialize a stable task session |
+| `get_session` | Inspect session metadata |
+| `add_session_message` | Append a low-level plain-text message |
+| `record_session_usage` | Record which contexts or skills were actually used |
+| `sync_progress` | Persist structured task progress after meaningful turns |
+| `commit_session` | Archive messages and trigger memory extraction |
+| `get_task` | Poll async commit status |
 
 Refer to OpenViking's tool documentation for full parameter details.
+
+## Recommended Agent Workflow
+
+For Cursor, Codex, Paperclip runners, and similar coding agents, use a retrieve-first,
+writeback-third loop:
+
+1. Connect to OpenViking over HTTP MCP.
+2. At task start, call `ensure_session` with a stable external task ID.
+3. Before answering implementation questions, call `search` or `query`. Narrow the URI scope
+   as soon as possible to the relevant repo or subdirectory.
+4. After each meaningful turn, call `sync_progress` with:
+   - `objective`
+   - `assistant_summary`
+   - `changed_files`
+   - `decisions`
+   - `next_steps`
+   - `contexts_used` when applicable
+5. Keep `auto_commit=true` and `wait_for_commit=false` for interactive chats.
+6. Use `commit_session(wait=true)` only in automation, validation, or end-of-task flows.
+
+Important integration note: publishing a task in an external orchestrator such as Paperclip
+does not itself trigger OpenViking retrieval or session sync. The host prompt, agent runtime,
+or workflow must explicitly invoke the MCP tools above.
 
 ## Troubleshooting
 
