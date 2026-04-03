@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0
 """
 Context Processor for OpenViking.
 
@@ -152,8 +152,8 @@ class ResourceProcessor:
                     )
                     return result
 
-                if parse_result.warnings:
-                    result["errors"].extend(parse_result.warnings)
+                if parse_result.warnings and kwargs.get("strict", False):
+                    result.setdefault("warnings", []).extend(parse_result.warnings)
 
                 telemetry.set(
                     "resource.parse.duration_ms",

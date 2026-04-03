@@ -6,7 +6,7 @@ Session manages conversation messages, tracks context usage, and extracts long-t
 
 **Lifecycle**: Create → Interact → Commit
 
-Getting a session by ID will auto-create it if it does not exist.
+Getting a session by ID does not auto-create it by default. Use `client.get_session(..., auto_create=True)` when you want missing sessions to be created automatically.
 
 ```python
 session = client.session(session_id="chat_001")
@@ -69,6 +69,7 @@ result = session.commit()
 # Poll background task progress
 task = client.get_task(result["task_id"])
 # task["status"]: "pending" | "running" | "completed" | "failed"
+# sum(task["result"]["memories_extracted"].values()): 3
 ```
 
 ## Message Structure
@@ -132,7 +133,7 @@ Unfinished tasks
 
 ## Memory Extraction
 
-### 6 Categories
+### 8 Categories
 
 | Category | Belongs to | Description | Mergeable |
 |----------|------------|-------------|-----------|
@@ -142,6 +143,8 @@ Unfinished tasks
 | **events** | user | Events/decisions | ❌ |
 | **cases** | agent | Problem + solution | ❌ |
 | **patterns** | agent | Reusable patterns | ✅ |
+| **tools** | agent | Tool usage knowledge and best practices | ✅ |
+| **skills** | agent | Skill execution knowledge and workflow strategies | ✅ |
 
 ### Extraction Flow
 
@@ -190,7 +193,9 @@ viking://user/memories/
 
 viking://agent/memories/
 ├── cases/
-└── patterns/
+├── patterns/
+├── tools/
+└── skills/
 ```
 
 ## Related Documents

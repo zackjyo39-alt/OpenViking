@@ -1,14 +1,14 @@
 # Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: AGPL-3.0
 """
 Provider Registry — single source of truth for LLM provider metadata.
 
-Supported providers: volcengine, openai, azure
+Supported providers: volcengine, openai, litellm
 """
 
 from __future__ import annotations
 
-VALID_PROVIDERS: tuple[str, ...] = ("volcengine", "openai", "azure")
+VALID_PROVIDERS: tuple[str, ...] = ("volcengine", "openai", "azure", "litellm")
 
 DEFAULT_AZURE_API_VERSION: str = "2025-01-01-preview"
 

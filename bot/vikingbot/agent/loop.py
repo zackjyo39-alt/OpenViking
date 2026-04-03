@@ -351,13 +351,15 @@ class AgentLoop:
                     tools_used.append(tool_used_dict)
 
                 messages.append(
-                    {"role": "system", "content": "Reflect on the results and decide next steps."}
+                    {"role": "user", "content": "Reflect on the results and decide next steps."}
                 )
             else:
                 final_content = response.content
                 break
 
-        if final_content is None:
+        if final_content is None or (
+            isinstance(final_content, str) and not final_content.strip()
+        ):
             if iteration >= self.max_iterations:
                 final_content = f"Reached {self.max_iterations} iterations without completion."
             else:
@@ -477,6 +479,16 @@ class AgentLoop:
                 await self.sessions.save(session)
                 return None
 
+            if not msg.need_reply:
+                session.add_message("user", msg.content, sender_id=msg.sender_id)
+                await self.sessions.save(session)
+                return OutboundMessage(
+                    session_key=msg.session_key,
+                    content=None,
+                    metadata=msg.metadata,
+                    event_type=OutboundEventType.NO_REPLY,
+                )
+
             # Consolidate memory before processing if session is too large
             if len(session.messages) > self.memory_window:
                 # Clone session for async consolidation, then immediately trim original
@@ -576,7 +588,9 @@ class AgentLoop:
             publish_events=False,
         )
 
-        if final_content is None:
+        if final_content is None or (
+            isinstance(final_content, str) and not final_content.strip()
+        ):
             final_content = "Background task completed."
 
         # Save to session (mark as system message in history)
